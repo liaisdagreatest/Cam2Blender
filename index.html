@@ -133,9 +133,9 @@
     <ol>
       <li>Serve or open this page over HTTPS — Chrome on Android requires a secure context for motion sensors, so plain file:// may not trigger the permission prompt.</li>
       <li>Tap Enable sensors, point the phone the way you want "forward" to be, then tap Recenter.</li>
-      <li>Tap Record, perform the move, tap it again to stop.</li>
-      <li>Tap Export .py — it downloads to your phone.</li>
-      <li>In Blender, open the Scripting tab, open the downloaded file, and click Run Script. A camera named "PhoneCam" is created with your take baked as keyframes.</li>
+      <li>Tap Record, perform the move, tap it again to stop — the script appears in the box below.</li>
+      <li>Tap Copy script to copy the text, or Download .py to save the file.</li>
+      <li>In Blender, open the Scripting tab, either paste the copied text into a new text block or open the downloaded file, then click Run Script. A camera named "PhoneCam" is created with your take baked as keyframes.</li>
     </ol>
   </details>
 </div>
@@ -343,10 +343,46 @@
 'scene.frame_start = frames[0][0]\n' +
 'scene.frame_end = frames[-1][0]\n' +
 'scene.camera = cam_obj\n\n' +
-'if cam_obj.animation_data and cam_obj.animation_data.action:\n' +
-'    for fcurve in cam_obj.animation_data.action.fcurves:\n' +
-'        for kp in fcurve.keyframe_points:\n' +
-"            kp.interpolation = 'LINEAR'\n\n" +
+'def _set_linear_interpolation(obj):\n' +
+'    # Blender keeps changing where F-Curves live:\n' +
+'    #  - 5.0+:      via anim_utils.action_get_channelbag_for_slot(action, slot)\n' +
+'    #  - 4.4 - 4.5: via action.layers[0].strips[0].channelbag(slot)\n' +
+'    #  - pre-4.4:   directly on action.fcurves\n' +
+'    # This tries each in turn and never raises, so a future API change\n' +
+'    # at worst skips the "linear interpolation" polish, not the animation.\n' +
+'    try:\n' +
+'        anim_data = obj.animation_data\n' +
+'        if not anim_data or not anim_data.action:\n' +
+'            return\n' +
+'        action = anim_data.action\n' +
+'        curves = []\n' +
+'        try:\n' +
+'            from bpy_extras import anim_utils\n' +
+"            slot = getattr(anim_data, 'action_slot', None)\n" +
+'            if slot is not None:\n' +
+'                channelbag = anim_utils.action_get_channelbag_for_slot(action, slot)\n' +
+'                if channelbag is not None:\n' +
+'                    curves = list(channelbag.fcurves)\n' +
+'        except Exception:\n' +
+'            curves = []\n' +
+'        if not curves:\n' +
+'            try:\n' +
+"                slot = getattr(anim_data, 'action_slot', None) or action.slots[0]\n" +
+'                for layer in action.layers:\n' +
+'                    for strip in layer.strips:\n' +
+'                        cbag = strip.channelbag(slot)\n' +
+'                        if cbag is not None:\n' +
+'                            curves.extend(cbag.fcurves)\n' +
+'            except Exception:\n' +
+'                pass\n' +
+"        if not curves and hasattr(action, 'fcurves'):\n" +
+'            curves = list(action.fcurves)\n' +
+'        for fcurve in curves:\n' +
+'            for kp in fcurve.keyframe_points:\n' +
+"                kp.interpolation = 'LINEAR'\n" +
+'    except Exception as e:\n' +
+'        print("Note: could not set linear interpolation:", e)\n\n' +
+'_set_linear_interpolation(cam_obj)\n\n' +
 'print(f"Imported {len(frames)} frames onto \'{CAM_NAME}\'.")\n';
   }
 
