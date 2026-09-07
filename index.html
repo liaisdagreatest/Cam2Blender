@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Phone → Blender Camera Rig</title>
+<style>
+  :root{
+    --bg:#0a0b0d;
+    --line:#23262b;
+    --text:#e9ebee;
+    --muted:#868c94;
+    --accent:#e8a33d;
+    --rec:#e8503d;
+    --ok:#4fbf8b;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+    overscroll-behavior:none;user-select:none;}
+  .wrap{max-width:460px;margin:0 auto;padding:22px 18px 48px;}
+  h1{font-size:17px;font-weight:600;margin:0 0 4px;letter-spacing:.2px;}
+  .sub{color:var(--muted);font-size:12.5px;line-height:1.5;margin-bottom:22px;}
+  .module{border-top:1px solid var(--line);padding:16px 0;}
+  .module:first-of-type{border-top:none;padding-top:0;}
+  .moduleTitle{font-size:11.5px;color:var(--muted);margin:0 0 10px;}
+  .row{display:flex;gap:10px;}
+  .row>*{flex:1;}
+  button{font-family:var(--sans);background:#1b1e23;color:var(--text);border:1px solid var(--line);
+    border-radius:8px;padding:12px;font-size:13.5px;font-weight:600;cursor:pointer;}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#1a1206;}
+  button.rec{background:var(--rec);border-color:var(--rec);color:#2a0b06;}
+  button:active{filter:brightness(.9);}
+  button:disabled{opacity:.35;}
+  .readout{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 6px;font-family:var(--mono);}
+  .readout div{text-align:center;}
+  .readout span{display:block;font-family:var(--sans);font-size:10.5px;color:var(--muted);margin-bottom:3px;}
+  .readout b{font-size:15px;font-weight:500;}
+  .dialWrap{display:flex;align-items:center;gap:18px;}
+  .dial{width:186px;height:186px;border-radius:50%;border:1px solid var(--line);position:relative;
+    flex-shrink:0;touch-action:none;background:radial-gradient(circle at 50% 50%, #14171b, #0d0f12);}
+  .dial::before,.dial::after{content:"";position:absolute;background:var(--line);}
+  .dial::before{left:50%;top:14px;bottom:14px;width:1px;transform:translateX(-50%);}
+  .dial::after{top:50%;left:14px;right:14px;height:1px;transform:translateY(-50%);}
+  .nub{width:56px;height:56px;border-radius:50%;background:var(--accent);border:2px solid #0a0b0d;
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);}
+  .dialCap{text-align:center;font-size:11px;color:var(--muted);margin-top:8px;}
+  .zStack{display:flex;flex-direction:column;gap:10px;align-items:center;}
+  .zBtn{width:56px;height:56px;border-radius:50%;font-size:18px;touch-action:none;}
+  .speedRow{display:flex;align-items:center;gap:10px;margin-top:16px;font-size:12px;color:var(--muted);}
+  input[type=range]{flex:1;accent-color:var(--accent);}
+  .status{font-size:12px;color:var(--muted);margin-top:10px;min-height:15px;line-height:1.5;}
+  .status.ok{color:var(--ok);}
+  .status.err{color:var(--rec);}
+  .recLine{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:10px;}
+  .recDot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--rec);
+    margin-right:6px;animation:blink 1s infinite;}
+  @keyframes blink{50%{opacity:.25;}}
+  textarea{width:100%;margin-top:12px;background:#0d0f12;color:var(--text);border:1px solid var(--line);
+    border-radius:8px;padding:10px;font-family:var(--mono);font-size:10.5px;line-height:1.5;
+    min-height:140px;resize:vertical;}
+  textarea::placeholder{color:var(--muted);font-family:var(--sans);font-size:12px;}
+  .copyRow{margin-top:10px;}
+  details{margin-top:4px;}
+  summary{cursor:pointer;color:var(--muted);font-size:12px;}
+  ol{font-size:12.5px;color:var(--muted);line-height:1.6;padding-left:18px;margin-top:10px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Phone → Blender camera rig</h1>
+    <div class="sub">Rotate the phone to aim the camera. Drag the dial to truck/dolly, use the side buttons for height. Record a take, then export a script that bakes it onto a Blender camera.</div>
+  </header>
+
+  <div class="module">
+    <div class="row">
+      <button class="primary" id="btnEnable">Enable sensors</button>
+      <button id="btnRecenter">Recenter</button>
+    </div>
+    <div class="status" id="status">Tap "Enable sensors" and allow motion access.</div>
+  </div>
+
+  <div class="module">
+    <p class="moduleTitle">Live transform</p>
+    <div class="readout">
+      <div><span>Rot X</span><b id="rBeta">0.0</b></div>
+      <div><span>Rot Y</span><b id="rAlpha">0.0</b></div>
+      <div><span>Rot Z</span><b id="rGamma">0.0</b></div>
+      <div><span>Pos X</span><b id="pX">0.00</b></div>
+      <div><span>Pos Y</span><b id="pY">0.00</b></div>
+      <div><span>Pos Z</span><b id="pZ">0.00</b></div>
+    </div>
+  </div>
+
+  <div class="module">
+    <p class="moduleTitle">Move</p>
+    <div class="dialWrap">
+      <div>
+        <div class="dial" id="pad"><div class="nub" id="nub"></div></div>
+        <div class="dialCap">truck / dolly</div>
+      </div>
+      <div class="zStack">
+        <button class="zBtn" id="btnUp">▲</button>
+        <span style="font-size:11px;color:var(--muted)">height</span>
+        <button class="zBtn" id="btnDown">▼</button>
+      </div>
+    </div>
+    <div class="speedRow">
+      <span>speed</span>
+      <input type="range" id="speed" min="0.1" max="4" step="0.1" value="1">
+      <span id="speedVal" style="font-family:var(--mono)">1.0 m/s</span>
+    </div>
+  </div>
+
+  <div class="module">
+    <p class="moduleTitle">Take</p>
+    <div class="row">
+      <button id="btnRecord">Record</button>
+    </div>
+    <div class="recLine" id="recStatus">No take recorded yet.</div>
+    <div class="row copyRow">
+      <button id="btnCopy" disabled>Copy script</button>
+      <button id="btnExport" disabled>Download .py</button>
+    </div>
+    <textarea id="scriptText" readonly placeholder="Record a take to generate the Blender script here."></textarea>
+    <div class="status" id="copyStatus"></div>
+  </div>
+
+  <details>
+    <summary>How to use in Blender</summary>
+    <ol>
+      <li>Serve or open this page over HTTPS — Chrome on Android requires a secure context for motion sensors, so plain file:// may not trigger the permission prompt.</li>
+      <li>Tap Enable sensors, point the phone the way you want "forward" to be, then tap Recenter.</li>
+      <li>Tap Record, perform the move, tap it again to stop.</li>
+      <li>Tap Export .py — it downloads to your phone.</li>
+      <li>In Blender, open the Scripting tab, open the downloaded file, and click Run Script. A camera named "PhoneCam" is created with your take baked as keyframes.</li>
+    </ol>
+  </details>
+</div>
+
+<script>
+(function(){
+  // ---------- state ----------
+  let latestEuler = { alpha: 0, beta: 0, gamma: 0 };
+  let calibOffset = { w:1, x:0, y:0, z:0 };
+  let pos = { x: 0, y: 0, z: 1.6 };
+  let joy = { x: 0, y: 0 };
+  let zVel = 0;
+  let speed = 1.0;
+  let recording = false;
+  let recordAccumulator = 0;
+  const CAPTURE_FPS = 24;
+  let frames = []; // {frame, x,y,z, qw,qx,qy,qz}
+  let frameCounter = 0;
+
+  // ---------- quaternion helpers ----------
+  function qMul(a, b) {
+    return {
+      w: a.w*b.w - a.x*b.x - a.y*b.y - a.z*b.z,
+      x: a.w*b.x + a.x*b.w + a.y*b.z - a.z*b.y,
+      y: a.w*b.y - a.x*b.z + a.y*b.w + a.z*b.x,
+      z: a.w*b.z + a.x*b.y - a.y*b.x + a.z*b.w,
+    };
+  }
+  function qConj(q) { return { w:q.w, x:-q.x, y:-q.y, z:-q.z }; }
+  function qFromAxisAngle(ax, ay, az, angleRad) {
+    const s = Math.sin(angleRad/2);
+    return { w: Math.cos(angleRad/2), x: ax*s, y: ay*s, z: az*s };
+  }
+  const DEG2RAD = Math.PI/180;
+
+  // Device euler (alpha/beta/gamma, degrees) -> quaternion in a Y-up world,
+  // following the standard orientation-to-quaternion recipe (intrinsic order
+  // beta, alpha, -gamma), then aligned so the camera's default forward (-Z)
+  // matches the screen's outward normal, then corrected for screen rotation.
+  function deviceEulerToQuat(alphaDeg, betaDeg, gammaDeg, screenAngleDeg) {
+    const x1 = betaDeg * DEG2RAD;
+    const y1 = alphaDeg * DEG2RAD;
+    const z1 = -gammaDeg * DEG2RAD;
+    const c1 = Math.cos(x1/2), c2 = Math.cos(y1/2), c3 = Math.cos(z1/2);
+    const s1 = Math.sin(x1/2), s2 = Math.sin(y1/2), s3 = Math.sin(z1/2);
+    let q = {
+      x: s1*c2*c3 + c1*s2*s3,
+      y: c1*s2*c3 - s1*c2*s3,
+      z: c1*c2*s3 - s1*s2*c3,
+      w: c1*c2*c3 + s1*s2*s3,
+    };
+    const qAlign = { w: Math.SQRT1_2, x: -Math.SQRT1_2, y: 0, z: 0 };
+    q = qMul(q, qAlign);
+    const qScreen = qFromAxisAngle(0, 0, 1, -screenAngleDeg * DEG2RAD);
+    q = qMul(q, qScreen);
+    return q;
+  }
+
+  // Convert a Y-up world quaternion to Blender's Z-up world quaternion
+  // (change of basis = a +90 degree rotation about the X axis).
+  const Q_YUP_TO_ZUP = { w: Math.SQRT1_2, x: Math.SQRT1_2, y: 0, z: 0 };
+  const Q_ZUP_TO_YUP = qConj(Q_YUP_TO_ZUP);
+  function toBlenderSpace(q) {
+    return qMul(qMul(Q_YUP_TO_ZUP, q), Q_ZUP_TO_YUP);
+  }
+
+  function getScreenAngle() {
+    if (screen.orientation && typeof screen.orientation.angle === 'number') return screen.orientation.angle;
+    if (typeof window.orientation === 'number') return window.orientation;
+    return 0;
+  }
+
+  // ---------- DOM refs ----------
+  const $ = (id) => document.getElementById(id);
+  const statusEl = $('status'), recStatusEl = $('recStatus');
+  const rBeta = $('rBeta'), rAlpha = $('rAlpha'), rGamma = $('rGamma');
+  const pX = $('pX'), pY = $('pY'), pZ = $('pZ');
+  const btnEnable = $('btnEnable'), btnRecenter = $('btnRecenter');
+  const btnRecord = $('btnRecord'), btnExport = $('btnExport'), btnCopy = $('btnCopy');
+  const scriptTextEl = $('scriptText'), copyStatusEl = $('copyStatus');
+  const pad = $('pad'), nub = $('nub');
+  const speedSlider = $('speed'), speedVal = $('speedVal');
+  const btnUp = $('btnUp'), btnDown = $('btnDown');
+
+  function setStatus(msg, kind) {
+    statusEl.textContent = msg;
+    statusEl.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  // ---------- sensors ----------
+  function onOrientation(e) {
+    latestEuler.alpha = e.alpha || 0;
+    latestEuler.beta = e.beta || 0;
+    latestEuler.gamma = e.gamma || 0;
+  }
+
+  async function enableSensors() {
+    try {
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const resp = await DeviceOrientationEvent.requestPermission();
+        if (resp !== 'granted') { setStatus('Motion permission denied.', 'err'); return; }
+      }
+      window.addEventListener('deviceorientation', onOrientation, true);
+      setStatus('Sensors enabled — aim the phone, then tap Recenter.', 'ok');
+    } catch (err) {
+      setStatus('Could not enable sensors: ' + err.message + '. This page needs to be served over HTTPS.', 'err');
+    }
+  }
+
+  function recenter() {
+    const raw = toBlenderSpace(deviceEulerToQuat(latestEuler.alpha, latestEuler.beta, latestEuler.gamma, getScreenAngle()));
+    calibOffset = qConj(raw);
+    pos.x = 0; pos.y = 0; pos.z = 1.6;
+    setStatus('Recentered — current facing is now forward.', 'ok');
+  }
+
+  // ---------- dial (truck / dolly) ----------
+  let dragging = false;
+  const PAD_R = 93;
+  function setNub(dx, dy) { nub.style.transform = 'translate(calc(-50% + ' + dx + 'px), calc(-50% + ' + dy + 'px))'; }
+  function padPointer(e) {
+    const rect = pad.getBoundingClientRect();
+    const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
+    let dx = e.clientX - cx, dy = e.clientY - cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist > PAD_R) { dx = dx/dist*PAD_R; dy = dy/dist*PAD_R; }
+    setNub(dx, dy);
+    joy.x = dx / PAD_R;
+    joy.y = -dy / PAD_R;
+  }
+  pad.addEventListener('pointerdown', (e) => { dragging = true; pad.setPointerCapture(e.pointerId); padPointer(e); });
+  pad.addEventListener('pointermove', (e) => { if (dragging) padPointer(e); });
+  function padRelease() { dragging = false; joy.x = 0; joy.y = 0; setNub(0,0); }
+  pad.addEventListener('pointerup', padRelease);
+  pad.addEventListener('pointercancel', padRelease);
+
+  function heldButton(el, onDown, onUp) {
+    el.addEventListener('pointerdown', (e) => { e.preventDefault(); onDown(); });
+    ['pointerup','pointercancel','pointerleave'].forEach(ev => el.addEventListener(ev, onUp));
+  }
+  heldButton(btnUp, () => zVel = 1, () => zVel = 0);
+  heldButton(btnDown, () => zVel = -1, () => zVel = 0);
+
+  speedSlider.addEventListener('input', () => {
+    speed = parseFloat(speedSlider.value);
+    speedVal.textContent = speed.toFixed(1) + ' m/s';
+  });
+
+  // ---------- recording ----------
+  function toggleRecord() {
+    recording = !recording;
+    if (recording) {
+      frames = []; frameCounter = 0; recordAccumulator = 0;
+      btnRecord.textContent = 'Stop';
+      btnRecord.classList.add('rec');
+      btnExport.disabled = true;
+      btnCopy.disabled = true;
+      scriptTextEl.value = '';
+      copyStatusEl.textContent = '';
+      recStatusEl.innerHTML = '<span class="recDot"></span>Recording: 0 samples, 0.0s';
+    } else {
+      btnRecord.textContent = 'Record';
+      btnRecord.classList.remove('rec');
+      btnExport.disabled = frames.length === 0;
+      btnCopy.disabled = frames.length === 0;
+      recStatusEl.textContent = frames.length + ' samples captured, ' + (frames.length/CAPTURE_FPS).toFixed(1) + 's';
+      if (frames.length > 0) scriptTextEl.value = generateScript();
+    }
+  }
+  btnRecord.addEventListener('click', toggleRecord);
+
+  function pushSample(q) {
+    frameCounter++;
+    frames.push({ frame: frameCounter, x: pos.x, y: pos.y, z: pos.z, qw: q.w, qx: q.x, qy: q.y, qz: q.z });
+    recStatusEl.innerHTML = '<span class="recDot"></span>Recording: ' + frames.length + ' samples, ' + (frames.length/CAPTURE_FPS).toFixed(1) + 's';
+  }
+
+  // ---------- script generation ----------
+  function generateScript() {
+    if (frames.length === 0) return '';
+    const lines = frames.map(f =>
+      '    (' + f.frame + ', ' + f.x.toFixed(4) + ', ' + f.y.toFixed(4) + ', ' + f.z.toFixed(4) + ', ' +
+      f.qw.toFixed(6) + ', ' + f.qx.toFixed(6) + ', ' + f.qy.toFixed(6) + ', ' + f.qz.toFixed(6) + '),'
+    ).join('\n');
+
+    return 'import bpy\n\n' +
+'# Auto-generated camera track from a phone sensor capture.\n' +
+'# Columns: frame, x, y, z, qw, qx, qy, qz  (Blender coords, Z-up, quaternion rotation)\n\n' +
+'CAM_NAME = "PhoneCam"\n' +
+'FPS = ' + CAPTURE_FPS + '\n\n' +
+'frames = [\n' + lines + '\n]\n\n' +
+'scene = bpy.context.scene\n' +
+'scene.render.fps = FPS\n\n' +
+'cam_data = bpy.data.cameras.get(CAM_NAME) or bpy.data.cameras.new(CAM_NAME)\n' +
+'cam_obj = bpy.data.objects.get(CAM_NAME)\n' +
+'if cam_obj is None:\n' +
+'    cam_obj = bpy.data.objects.new(CAM_NAME, cam_data)\n' +
+'    scene.collection.objects.link(cam_obj)\n\n' +
+"cam_obj.rotation_mode = 'QUATERNION'\n\n" +
+'for frame, x, y, z, qw, qx, qy, qz in frames:\n' +
+'    cam_obj.location = (x, y, z)\n' +
+'    cam_obj.rotation_quaternion = (qw, qx, qy, qz)\n' +
+'    cam_obj.keyframe_insert(data_path="location", frame=frame)\n' +
+'    cam_obj.keyframe_insert(data_path="rotation_quaternion", frame=frame)\n\n' +
+'scene.frame_start = frames[0][0]\n' +
+'scene.frame_end = frames[-1][0]\n' +
+'scene.camera = cam_obj\n\n' +
+'if cam_obj.animation_data and cam_obj.animation_data.action:\n' +
+'    for fcurve in cam_obj.animation_data.action.fcurves:\n' +
+'        for kp in fcurve.keyframe_points:\n' +
+"            kp.interpolation = 'LINEAR'\n\n" +
+'print(f"Imported {len(frames)} frames onto \'{CAM_NAME}\'.")\n';
+  }
+
+  function exportPython() {
+    const script = generateScript();
+    if (!script) return;
+    scriptTextEl.value = script;
+    const blob = new Blob([script], { type: 'text/x-python' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'phone_camera_track.py';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setStatus('Exported phone_camera_track.py — check your downloads.', 'ok');
+  }
+  btnExport.addEventListener('click', exportPython);
+
+  function setCopyStatus(msg, kind) {
+    copyStatusEl.textContent = msg;
+    copyStatusEl.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  async function copyScript() {
+    const script = generateScript();
+    if (!script) return;
+    scriptTextEl.value = script;
+    try {
+      await navigator.clipboard.writeText(script);
+      setCopyStatus('Copied to clipboard.', 'ok');
+    } catch (err) {
+      let ok = false;
+      try {
+        scriptTextEl.focus();
+        scriptTextEl.setSelectionRange(0, script.length);
+        ok = document.execCommand('copy');
+      } catch (e2) { ok = false; }
+      setCopyStatus(ok ? 'Copied to clipboard.' : 'Could not auto-copy — tap the box above, select all, then copy.', ok ? 'ok' : 'err');
+    }
+  }
+  btnCopy.addEventListener('click', copyScript);
+
+  // ---------- main loop ----------
+  let lastTime = performance.now();
+  function loop(now) {
+    const dt = Math.min((now - lastTime) / 1000, 0.1);
+    lastTime = now;
+
+    pos.x += joy.x * speed * dt;
+    pos.y += joy.y * speed * dt;
+    pos.z += zVel * speed * dt;
+
+    const rawQ = toBlenderSpace(deviceEulerToQuat(latestEuler.alpha, latestEuler.beta, latestEuler.gamma, getScreenAngle()));
+    const finalQ = qMul(calibOffset, rawQ);
+
+    rBeta.textContent = latestEuler.beta.toFixed(1);
+    rAlpha.textContent = latestEuler.alpha.toFixed(1);
+    rGamma.textContent = latestEuler.gamma.toFixed(1);
+    pX.textContent = pos.x.toFixed(2);
+    pY.textContent = pos.y.toFixed(2);
+    pZ.textContent = pos.z.toFixed(2);
+
+    if (recording) {
+      recordAccumulator += dt;
+      const interval = 1 / CAPTURE_FPS;
+      while (recordAccumulator >= interval) {
+        recordAccumulator -= interval;
+        pushSample(finalQ);
+      }
+    }
+
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  btnEnable.addEventListener('click', enableSensors);
+  btnRecenter.addEventListener('click', recenter);
+})();
+</script>
+</body>
+</html>
